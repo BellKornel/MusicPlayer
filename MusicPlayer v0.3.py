@@ -2,11 +2,11 @@
 
 if __name__ == '__main__':
     import pygame
-    import easygui
     from getpass import getuser
     from os import walk
     from random import choice
     from mutagen.mp3 import MP3
+    import wx
 
 
     class ClassCounter:
@@ -201,7 +201,7 @@ if __name__ == '__main__':
     class Control:
         counter = ClassCounter()
 
-        def __init__(self, png, pos, cmd, depend=None, arg=None):
+        def __init__(self, png, pos, cmd, depend=None):
             self.main = pygame.transform.smoothscale(pygame.image.load(png), (30, 30))
             self.main2 = pygame.transform.smoothscale(pygame.image.load(png), (30, 30))
             self.pos = pos
@@ -209,7 +209,6 @@ if __name__ == '__main__':
             self.under = 0
             self.depend = depend
             self.n = self.counter.plus()
-            self.arg = arg
             self.color = current_color
             for h in range(30):
                 for w in range(30):
@@ -233,10 +232,7 @@ if __name__ == '__main__':
                 Scontrol.blit(self.main2, self.pos)
                 if mouseButton:
                     mouseButton = 0
-                    if self.arg is not None:
-                        self.cmd(self.arg)
-                    else:
-                        self.cmd()
+                    self.cmd()
             else:
                 if self.depend is not None and globals()[self.depend]:
                     Scontrol.blit(self.main2, self.pos)
@@ -256,21 +252,34 @@ if __name__ == '__main__':
 
 
     def load_music():
-        for path in data[1]:
-            for root, dirs, files in walk(path):
-                if path == root or data[0][0] == 'Yes':
-                    for file in files:
-                        if file.endswith('.mp3'):
-                            musics.append(Music(file, root))
+        global musics
+        musics = []
+        Music.counter.drop_number()
+        for root, dirs, files in walk(data[1][0]):
+            if data[1][0] == root or data[0][0] == 'Yes':
+                for file in files:
+                    if file.endswith('.mp3'):
+                        musics.append(Music(file, root))
 
 
     def load_wallpaper():
-        for path in data[2]:
-            for root, dirs, files in walk(path):
-                if path == root or data[0][1] == 'Yes':
-                    for file in files:
-                        if file.endswith('.jpg'):
-                            wallpapers.append(Wallpaper(file, root))
+        global wallpapers
+        wallpapers = []
+        Wallpaper.counter.drop_number()
+        for root, dirs, files in walk(data[2][0]):
+            if data[2][0] == root or data[0][1] == 'Yes':
+                for file in files:
+                    if file.endswith('.jpg'):
+                        wallpapers.append(Wallpaper(file, root))
+
+
+    def dir_open_box(root_path='', msg='Choose a directory'):
+        app = wx.App()
+        dialog = wx.DirDialog(None, msg, defaultPath=root_path, style=wx.DD_DEFAULT_STYLE | wx.DD_NEW_DIR_BUTTON)
+        if dialog.ShowModal() == wx.ID_OK:
+            return dialog.GetPath()
+        dialog.Destroy()
+        app.Destroy()
 
 
     def dprevious():
@@ -293,15 +302,18 @@ if __name__ == '__main__':
             dplay(musics[n])
 
 
-    def dplay(m):
+    def dplay(m=None):
         global status, pause, delta
         if not status:
-            if isinstance(m, int):
-                m = musics[m]
-            if len(rand_list) > 0 and rand_list[-1] != m:
+            if m is None:
+                if len(rand_list) > 0:
+                    m = musics[rand_list[-1].n]
+                else:
+                    m = musics[0]
+            if len(rand_list) > 0 and rand_list[-1] != m or len(rand_list) == 0:
                 rand_list.append(m)
-            elif len(rand_list) == 0:
-                rand_list.append(m)
+            if len(rand_list) > 100:
+                rand_list.pop(0)
             if data[0][2] == 'Yes':
                 pygame.mixer.quit()
                 pygame.mixer.init(frequency=m.frequency)
@@ -411,7 +423,7 @@ if __name__ == '__main__':
 
 
     def draw_setting():
-        global mouseButton, musics, wallpapers, status, cw
+        global mouseButton, status
         if Ssetting_alpha > 0:
             texts = ['Искать во вложенных папках музыки:',
                      'Расположение музыки:',
@@ -435,18 +447,17 @@ if __name__ == '__main__':
                             if status:
                                 status = 0
                                 pygame.mixer.music.stop()
-                            musics = []
-                            Music.counter.drop_number()
                             load_music()
-                            Cplay.arg = musics[0]
                         if i == 1:
-                            filename = easygui.diropenbox()
+                            filename = dir_open_box(data[1][0], 'Choose musics direction')
                             if filename is not None:
-                                data[1][0] = filename
+                                data[1][0] = filename+'\\'
+                                load_music()
                         if i == 2:
-                            filename = easygui.fileopenbox(multiple=True)
+                            filename = dir_open_box(data[2][0], 'Choose pictures direction')
                             if filename is not None:
-                                pass
+                                data[2][0] = filename+'\\'
+                                load_wallpaper()
                 else:
                     Ssetting.blit(label.render(texts[i], 1, white), pos1[i])
                     Ssetting.blit(label.render(param[i], 1, white), pos2[i])
@@ -455,7 +466,10 @@ if __name__ == '__main__':
     def draw_status():
         global mouseButton, delta
         pygame.draw.line(Scontrol, white, (200, 34), (600, 34), 3)
-        check = musics[0].check_status()
+        try:
+            check = musics[0].check_status()
+        except IndexError:
+            check = -1
         if check != -1:
             length = int(musics[check].music_length)
             if musics[check].frequency != 1:
@@ -636,7 +650,7 @@ if __name__ == '__main__':
     # current_color = wallpapers[0].control_sum
 
     Cprev = Control('data/prev.jpg', (10, 20), dprevious)
-    Cplay = Control('data/play.jpg', (55, 20), dplay, arg=musics[0])
+    Cplay = Control('data/play.jpg', (55, 20), dplay)
     Cpause = Control('data/pause.jpg', (55, 20), dpause)
     Cstop = Control('data/stop.jpg', (100, 20), dstop)
     Cnext = Control('data/next.jpg', (145, 20), dnext)
